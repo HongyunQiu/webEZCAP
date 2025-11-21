@@ -12,6 +12,8 @@
 typedef void qhyccd_handle;
 
 // 这里只定义当前 addon 用到的控制 ID，值来自 sdk/include/qhyccdstruct.h
+static const int QHYCCD_CONTROL_GAIN = 6;     // CONTROL_GAIN
+static const int QHYCCD_CONTROL_OFFSET = 7;   // CONTROL_OFFSET
 static const int QHYCCD_CONTROL_EXPOSURE = 8; // CONTROL_EXPOSURE
 
 struct QHYCCDFunctions {

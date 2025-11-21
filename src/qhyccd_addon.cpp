@@ -41,6 +41,8 @@ static napi_value CaptureSingleFrame(napi_env env, napi_callback_info info) {
   NAPI_CALL(env, napi_get_cb_info(env, info, &argc, args, NULL, NULL));
 
   uint32_t exposureMs = 1000;
+  double gain = -1.0;
+  double offset = -1.0;
   uint32_t roiWidth = 1920;
   uint32_t roiHeight = 1080;
 
@@ -51,6 +53,15 @@ static napi_value CaptureSingleFrame(napi_env env, napi_callback_info info) {
       napi_value v;
       if (napi_get_named_property(env, args[0], "exposureMs", &v) == napi_ok) {
         napi_get_value_uint32(env, v, &exposureMs);
+      }
+      if (napi_get_named_property(env, args[0], "exposureUs", &v) == napi_ok) {
+        napi_get_value_double(env, v, &exposureUs);
+      }
+      if (napi_get_named_property(env, args[0], "gain", &v) == napi_ok) {
+        napi_get_value_double(env, v, &gain);
+      }
+      if (napi_get_named_property(env, args[0], "offset", &v) == napi_ok) {
+        napi_get_value_double(env, v, &offset);
       }
       if (napi_get_named_property(env, args[0], "width", &v) == napi_ok) {
         napi_get_value_uint32(env, v, &roiWidth);
@@ -158,9 +169,22 @@ static napi_value CaptureSingleFrame(napi_env env, napi_callback_info info) {
   ret = qhy.SetQHYCCDResolution(handle, 0, 0, roiWidth, roiHeight);
   if (ret != 0) goto fail;
 
-  exposureUs = (double)exposureMs * 1000.0;
+  // 曝光时间（单位：微秒）
+  if (exposureUs <= 0.0) {
+    exposureUs = (double)exposureMs * 1000.0;
+  }
   ret = qhy.SetQHYCCDParam(handle, QHYCCD_CONTROL_EXPOSURE, exposureUs);
   if (ret != 0) goto fail;
+
+  // 增益和偏置（如果提供）
+  if (gain >= 0.0) {
+    ret = qhy.SetQHYCCDParam(handle, QHYCCD_CONTROL_GAIN, gain);
+    if (ret != 0) goto fail;
+  }
+  if (offset >= 0.0) {
+    ret = qhy.SetQHYCCDParam(handle, QHYCCD_CONTROL_OFFSET, offset);
+    if (ret != 0) goto fail;
+  }
 
   ret = qhy.ExpQHYCCDSingleFrame(handle);
   if (ret != 0) goto fail;

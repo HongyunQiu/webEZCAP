@@ -3,7 +3,120 @@ document.addEventListener('DOMContentLoaded', async () => {
   const statusEl = document.getElementById('status');
   const resultEl = document.getElementById('result');
   const expInput = document.getElementById('expMs');
+  const gainSlider = document.getElementById('gainSlider');
+  const offsetSlider = document.getElementById('offsetSlider');
+  const gainValueEl = document.getElementById('gainValue');
+  const offsetValueEl = document.getElementById('offsetValue');
+  const exposureValueEl = document.getElementById('exposureValue');
+  const exposureUnitToggle = document.getElementById('exposureUnitToggle');
   const imageContainer = document.getElementById('imageContainer');
+
+  // 曝光单位：us / ms / s
+  const exposureUnits = ['us', 'ms', 's'];
+  let exposureUnitIndex = 1; // 默认 ms
+
+  function getCurrentExposureUnit() {
+    return exposureUnits[exposureUnitIndex] || 'ms';
+  }
+
+  function updateExposureUi() {
+    if (!expInput || !exposureValueEl) return;
+    const v = Number(expInput.value) || 0;
+    const unit = getCurrentExposureUnit();
+    exposureValueEl.textContent = `${v} ${unit}`;
+    if (exposureUnitToggle) {
+      exposureUnitToggle.textContent = unit;
+    }
+  }
+
+  // 初始化滑杆显示
+  if (gainSlider && gainValueEl) {
+    const updateGainLabel = () => {
+      const v = Number(gainSlider.value) || 0;
+      gainValueEl.textContent = v > 0 ? `+${v}` : `${v}`;
+    };
+    gainSlider.addEventListener('input', updateGainLabel);
+    updateGainLabel();
+  }
+
+  if (offsetSlider && offsetValueEl) {
+    const updateOffsetLabel = () => {
+      const v = Number(offsetSlider.value) || 0;
+      offsetValueEl.textContent = `${v}`;
+    };
+    offsetSlider.addEventListener('input', updateOffsetLabel);
+    updateOffsetLabel();
+  }
+
+  if (expInput && exposureValueEl) {
+    expInput.addEventListener('input', updateExposureUi);
+    updateExposureUi();
+  }
+
+  // 允许在右侧绿色文本中手动输入曝光时间（例如 100s / 500 ms / 20000us）
+  function parseExposureText(text) {
+    if (!text) return null;
+    const m = text.trim().match(/^([\d.]+)\s*(us|ms|s)?$/i);
+    if (!m) return null;
+    const value = Number(m[1]);
+    if (!Number.isFinite(value)) return null;
+    const unit = m[2] ? m[2].toLowerCase() : null;
+    return { value, unit };
+  }
+
+  function commitExposureFromText() {
+    if (!expInput || !exposureValueEl) return;
+    const parsed = parseExposureText(exposureValueEl.textContent || '');
+    if (!parsed) {
+      // 恢复为当前滑杆值
+      updateExposureUi();
+      return;
+    }
+
+    let { value, unit } = parsed;
+    if (!Number.isFinite(value)) {
+      updateExposureUi();
+      return;
+    }
+
+    // 限制范围到 0-3600
+    if (value < 0) value = 0;
+    if (value > 3600) value = 3600;
+
+    // 如果手动输入了单位，则切换当前单位
+    const targetUnit = unit || getCurrentExposureUnit();
+    const idx = exposureUnits.indexOf(targetUnit);
+    if (idx >= 0) {
+      exposureUnitIndex = idx;
+    }
+
+    expInput.value = String(value);
+    updateExposureUi();
+  }
+
+  if (exposureValueEl) {
+    // 按回车确认当前文本为曝光时间
+    exposureValueEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitExposureFromText();
+        // 取消选中，避免换行
+        exposureValueEl.blur();
+      }
+    });
+
+    // 失焦时，恢复为标准显示（防止用户输了一半）
+    exposureValueEl.addEventListener('blur', () => {
+      updateExposureUi();
+    });
+  }
+
+  if (exposureUnitToggle) {
+    exposureUnitToggle.addEventListener('click', () => {
+      exposureUnitIndex = (exposureUnitIndex + 1) % exposureUnits.length;
+      updateExposureUi();
+    });
+  }
 
   // 离屏 canvas，用于从 16bit -> 8bit RGBA 并生成纹理
   const offscreenCanvas = document.createElement('canvas');
@@ -34,6 +147,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const zoomOutBtn = document.getElementById('zoomOutBtn');
   const zoomResetBtn = document.getElementById('zoomResetBtn');
   const zoomLevelEl = document.getElementById('zoomLevel');
+  const interpolationSelect = document.getElementById('interpolationSelect');
 
   // 缩放相关状态
   let currentZoom = 1.0;
@@ -41,6 +155,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentZoomIndex = zoomLevels.indexOf(1.0);
   let offsetX = 0; // 画面平移 X 偏移（像素）
   let offsetY = 0; // 画面平移 Y 偏移（像素）
+  let useInterpolation = true; // true: 插值缩放（线性），false: 不插值缩放（最近邻）
+
+  /**
+   * 获取当前应使用的 Pixi 缩放模式
+   */
+  function getScaleMode() {
+    // 兼容性保护：如果 PIXI.SCALE_MODES 不存在，则不做处理
+    if (!PIXI.SCALE_MODES) return null;
+    return useInterpolation ? PIXI.SCALE_MODES.LINEAR : PIXI.SCALE_MODES.NEAREST;
+  }
+
+  /**
+   * 将当前插值模式应用到已有的图像纹理上
+   */
+  function applyInterpolationMode() {
+    const scaleMode = getScaleMode();
+    if (!scaleMode || !imageSprite || !imageSprite.texture || !imageSprite.texture.baseTexture) {
+      return;
+    }
+    imageSprite.texture.baseTexture.scaleMode = scaleMode;
+    imageSprite.texture.baseTexture.update();
+  }
 
   /**
    * 根据当前缩放和偏移，更新 Pixi 图层的变换
@@ -103,6 +239,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   zoomInBtn.addEventListener('click', zoomIn);
   zoomOutBtn.addEventListener('click', zoomOut);
   zoomResetBtn.addEventListener('click', zoomReset);
+
+  // 插值 / 不插值 缩放切换
+  if (interpolationSelect) {
+    interpolationSelect.addEventListener('change', () => {
+      // value: 'on' => 插值缩放；'off' => 不插值缩放
+      useInterpolation = interpolationSelect.value === 'on';
+      applyInterpolationMode();
+    });
+  }
 
   // 鼠标滚轮缩放（可选）
   imageContainer.addEventListener('wheel', (e) => {
@@ -283,10 +428,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     offscreenCtx.putImageData(imageData, 0, 0);
 
     const texture = PIXI.Texture.from(offscreenCanvas);
+    const scaleMode = getScaleMode();
+    if (scaleMode && texture.baseTexture) {
+      texture.baseTexture.scaleMode = scaleMode;
+    }
 
     if (imageSprite) {
-      // 释放上一帧的纹理资源
-      imageSprite.texture.destroy(true);
+      // 释放上一帧的纹理资源（不销毁底层 BaseTexture，以避免影响新纹理）
+      imageSprite.texture.destroy(false);
       imageLayer.removeChild(imageSprite);
     }
 
@@ -294,6 +443,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     imageSprite.interactive = false;
     imageLayer.addChild(imageSprite);
     
+    // 应用当前插值模式与缩放
+    applyInterpolationMode();
     // 应用当前缩放
     applyZoom();
   }
@@ -329,15 +480,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     resultEl.textContent = error || '未知错误';
   });
 
+  function computeExposureUs() {
+    if (!expInput) return 1000000; // 默认 1s
+    const raw = Number(expInput.value) || 0;
+    const unit = getCurrentExposureUnit();
+    let us = 0;
+    if (unit === 'us') {
+      us = raw;
+    } else if (unit === 'ms') {
+      us = raw * 1000;
+    } else {
+      // s
+      us = raw * 1000 * 1000;
+    }
+    if (us <= 0) us = 1; // 避免 0 曝光
+    return us;
+  }
+
   btn.addEventListener('click', () => {
     statusEl.textContent = '正在曝光并获取单帧图像，请稍候……';
     resultEl.textContent = '';
 
-    const exposureMs = Number(expInput.value) || 1000;
+    const exposureUs = computeExposureUs();
+    const exposureMs = exposureUs / 1000.0;
+    const gain = gainSlider ? Number(gainSlider.value) || 0 : undefined;
+    const offset = offsetSlider ? Number(offsetSlider.value) || 0 : undefined;
+
     window.qhy.captureSingleFrame({
       exposureMs,
+      exposureUs,
+      exposureUnit: getCurrentExposureUnit(),
+      rawExposure: Number(expInput.value) || 0,
       width: 1920,
       height: 1080,
+      gain,
+      offset,
     });
   });
 });

@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('qhy', {
   /**
    * 触发一次单帧拍摄
-   * @param {Object} options { exposureMs, width, height }
+   * @param {Object} options { exposureMs?, exposureUs?, exposureUnit?, rawExposure?, width, height, gain?, offset? }
    */
   captureSingleFrame(options) {
     ipcRenderer.send('capture-single-frame', options);

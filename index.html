@@ -117,7 +117,7 @@
         padding-bottom: 0;
       }
 
-      /* 表单控件 */
+      /* 表单控件 & 滑杆样式 */
       .control-group {
         margin-bottom: 16px;
       }
@@ -139,21 +139,88 @@
         align-items: center;
       }
 
-      input[type="number"] {
+      /* 通用滑杆行 */
+      .slider-row {
         width: 100%;
-        padding: 6px 10px;
-        border-radius: 4px;
-        border: 1px solid #30363d;
-        background: var(--input-bg);
-        color: var(--text-primary);
-        font-family: inherit;
-        font-size: 13px;
-        outline: none;
-        transition: border-color 0.2s;
       }
 
-      input[type="number"]:focus {
-        border-color: var(--accent-color);
+      .slider-row-dual {
+        display: flex;
+        gap: 12px;
+      }
+
+      .slider-block {
+        flex: 1;
+      }
+
+      .slider-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+
+      .slider-label {
+        color: var(--text-secondary);
+      }
+
+      .slider-value {
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo,
+          monospace;
+        font-size: 12px;
+        color: #3fb950; /* 近似 GitHub 成功绿色 */
+      }
+
+      .slider-unit {
+        color: var(--text-secondary);
+        cursor: pointer;
+        text-decoration: underline;
+        text-decoration-color: rgba(139, 148, 158, 0.5);
+      }
+
+      .slider-unit:hover {
+        color: var(--accent-color);
+        text-decoration-color: var(--accent-color);
+      }
+
+      /* range 滑杆本体 */
+      input[type='range'] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 4px;
+        border-radius: 999px;
+        background: #30363d;
+        outline: none;
+        cursor: pointer;
+      }
+
+      input[type='range']::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #c678dd; /* 柔和紫色，类似示例 */
+        border: none;
+        margin-top: -6px; /* 垂直居中到轨道 */
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
+      }
+
+      input[type='range']::-moz-range-track {
+        height: 4px;
+        border-radius: 999px;
+        background: #30363d;
+      }
+
+      input[type='range']::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #c678dd;
+        border: none;
+        box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
       }
 
       /* 按钮样式 - 仿 Capture One 橙色按钮 */
@@ -277,6 +344,17 @@
         font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
       }
 
+      .zoom-mode-select {
+        height: 28px;
+        background: var(--input-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-primary);
+        font-size: 12px;
+        padding: 2px 8px;
+        outline: none;
+      }
+
       .image-container {
         flex: 1;
         overflow: hidden;            /* 使用平移而不是原生滚动条 */
@@ -334,11 +412,6 @@
     <div class="app-container">
       <!-- 左侧控制栏 -->
       <aside class="sidebar">
-        <div class="sidebar-header">
-          <h1>QHYCCD</h1>
-          <p class="subtitle">Camera Control</p>
-        </div>
-
         <div class="sidebar-content">
           <!-- 曝光设置面板 -->
           <div class="tool-panel">
@@ -347,12 +420,71 @@
               <span class="panel-toggle">▼</span>
             </div>
             <div class="panel-body" data-panel-body="exposure">
+              <!-- 增益 & 偏置 同行滑杆 -->
               <div class="control-group">
-                <label for="expMs">Exposure Time (ms)</label>
-                <div class="input-wrapper">
-                  <input id="expMs" type="number" value="1000" min="1" />
+                <div class="slider-row slider-row-dual">
+                  <div class="slider-block">
+                    <div class="slider-header">
+                      <span class="slider-label">Gain</span>
+                      <span class="slider-value" id="gainValue">+0</span>
+                    </div>
+                    <input
+                      id="gainSlider"
+                      type="range"
+                      min="0"
+                      max="100"
+                      value="0"
+                    />
+                  </div>
+                  <div class="slider-block">
+                    <div class="slider-header">
+                      <span class="slider-label">Offset</span>
+                      <span class="slider-value" id="offsetValue">0</span>
+                    </div>
+                    <input
+                      id="offsetSlider"
+                      type="range"
+                      min="0"
+                      max="100"
+                      value="0"
+                    />
+                  </div>
                 </div>
               </div>
+
+              <!-- 曝光 单独一行滑杆 -->
+              <div class="control-group">
+                <div class="slider-row">
+                  <div class="slider-header">
+                    <span class="slider-label">
+                      Exposure (
+                      <span
+                        id="exposureUnitToggle"
+                        class="slider-unit"
+                        title="点击切换 us / ms / s"
+                        >ms</span
+                      >)
+                    </span>
+                    <span
+                      class="slider-value"
+                      id="exposureValue"
+                      contenteditable="true"
+                      spellcheck="false"
+                      title="可直接输入曝光时间，例如 100s / 500 ms / 20000us，按回车确定"
+                    >
+                      1000 ms
+                    </span>
+                  </div>
+                  <input
+                    id="expMs"
+                    type="range"
+                    min="0"
+                    max="3600"
+                    value="1000"
+                  />
+                </div>
+              </div>
+
               <button id="captureBtn">Capture</button>
             </div>
           </div>
@@ -400,6 +532,14 @@
             <span class="zoom-level" id="zoomLevel">100%</span>
             <button class="zoom-btn" id="zoomInBtn" title="放大">+</button>
             <button class="zoom-btn" id="zoomResetBtn" title="1:1显示">1:1</button>
+            <select
+              id="interpolationSelect"
+              class="zoom-mode-select"
+              title="选择缩放时是否进行插值"
+            >
+              <option value="on">插值缩放</option>
+              <option value="off">不插值缩放</option>
+            </select>
           </div>
         </div>
         <div class="image-container" id="imageContainer"></div>
