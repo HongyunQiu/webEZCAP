@@ -383,6 +383,89 @@
         display: block;
       }
 
+      /* 直方图 - 灰度拉伸控制条 */
+      .histogram-controls {
+        margin-top: 8px;
+      }
+
+      .histogram-level-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 11px;
+        margin-bottom: 4px;
+      }
+
+      .histogram-level-header span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .histogram-level-label {
+        color: var(--text-secondary);
+      }
+
+      .histogram-level-value {
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo,
+          monospace;
+        font-size: 11px;
+        color: #3fb950;
+      }
+
+      .dual-range-wrapper {
+        position: relative;
+        height: 22px;
+        margin-top: 2px;
+      }
+
+      .dual-range-track {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        height: 4px;
+        border-radius: 999px;
+        background: #30363d;
+      }
+
+      .dual-range-wrapper input[type='range'] {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        background: transparent; /* 由最下面那条轨道决定背景 */
+        pointer-events: none; /* 由 thumb 接收事件 */
+      }
+
+      /* 允许 thumb 接收事件以实现双滑块效果（Chromium / Firefox） */
+      .dual-range-wrapper input[type='range']::-webkit-slider-thumb {
+        pointer-events: auto;
+      }
+
+      .dual-range-wrapper input[type='range']::-moz-range-thumb {
+        pointer-events: auto;
+      }
+
+      /* 单独定制黑电平 / 白电平 thumb 颜色，便于区分 */
+      #blackLevelSlider::-webkit-slider-thumb {
+        background: #58a6ff;
+      }
+
+      #blackLevelSlider::-moz-range-thumb {
+        background: #58a6ff;
+      }
+
+      #whiteLevelSlider::-webkit-slider-thumb {
+        background: #f0883e;
+      }
+
+      #whiteLevelSlider::-moz-range-thumb {
+        background: #f0883e;
+      }
+
       .histogram-info {
         margin-top: 8px;
         font-size: 11px;
@@ -498,6 +581,43 @@
             <div class="panel-body" data-panel-body="histogram">
               <div class="histogram-container">
                 <canvas id="histogramCanvas"></canvas>
+              </div>
+              <div class="histogram-controls">
+                <div class="histogram-level-header">
+                  <span>
+                    <span class="histogram-level-label">Black</span>
+                    <span
+                      id="blackLevelValue"
+                      class="histogram-level-value"
+                      >0</span
+                    >
+                  </span>
+                  <span>
+                    <span class="histogram-level-label">White</span>
+                    <span
+                      id="whiteLevelValue"
+                      class="histogram-level-value"
+                      >65535</span
+                    >
+                  </span>
+                </div>
+                <div class="dual-range-wrapper">
+                  <div class="dual-range-track"></div>
+                  <input
+                    id="blackLevelSlider"
+                    type="range"
+                    min="0"
+                    max="65535"
+                    value="0"
+                  />
+                  <input
+                    id="whiteLevelSlider"
+                    type="range"
+                    min="0"
+                    max="65535"
+                    value="65535"
+                  />
+                </div>
               </div>
               <div class="histogram-info">
                 <span id="histMin">Min: -</span>

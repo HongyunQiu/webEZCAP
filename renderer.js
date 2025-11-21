@@ -141,6 +141,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const histMinEl = document.getElementById('histMin');
   const histMaxEl = document.getElementById('histMax');
   const histMeanEl = document.getElementById('histMean');
+  const blackLevelSlider = document.getElementById('blackLevelSlider');
+  const whiteLevelSlider = document.getElementById('whiteLevelSlider');
+  const blackLevelValueEl = document.getElementById('blackLevelValue');
+  const whiteLevelValueEl = document.getElementById('whiteLevelValue');
 
   // 缩放控制相关元素
   const zoomInBtn = document.getElementById('zoomInBtn');
@@ -156,6 +160,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   let offsetX = 0; // 画面平移 X 偏移（像素）
   let offsetY = 0; // 画面平移 Y 偏移（像素）
   let useInterpolation = true; // true: 插值缩放（线性），false: 不插值缩放（最近邻）
+
+  // 直方图灰度拉伸 & 最近一帧数据
+  let lastPixels16 = null;
+  let lastWidth = 0;
+  let lastHeight = 0;
+  // 黑电平 / 白电平（单位：16bit 强度值 0-65535）
+  let blackLevel = 0;
+  let whiteLevel = 65535;
 
   /**
    * 获取当前应使用的 Pixi 缩放模式
@@ -263,6 +275,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 初始化
   updateZoomDisplay();
+  // 初始化黑白电平数值显示（使用默认 0 / 65535）
+  updateLevelSlidersAndLabels();
 
   /**
    * 图像拖拽平移（左键按下拖动，改变偏移量）
@@ -312,15 +326,66 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('mouseleave', stopPanning);
 
   /**
+   * 绑定黑白电平滑块事件
+   * 限制 blackLevel 始终不大于 whiteLevel，whiteLevel 不小于 blackLevel
+   * 每次调整后实时重绘直方图和图像
+   */
+  if (blackLevelSlider) {
+    blackLevelSlider.addEventListener('input', () => {
+      let value = Number(blackLevelSlider.value) || 0;
+      // 保证不超过白电平
+      if (value > whiteLevel) {
+        value = whiteLevel;
+      }
+      blackLevel = Math.min(Math.max(0, value), 65535);
+      updateLevelSlidersAndLabels();
+      redrawFromLevels();
+    });
+  }
+
+  if (whiteLevelSlider) {
+    whiteLevelSlider.addEventListener('input', () => {
+      let value = Number(whiteLevelSlider.value) || 65535;
+      // 保证不低于黑电平
+      if (value < blackLevel) {
+        value = blackLevel;
+      }
+      whiteLevel = Math.min(Math.max(0, value), 65535);
+      updateLevelSlidersAndLabels();
+      redrawFromLevels();
+    });
+  }
+
+  /**
+   * 更新黑白电平滑块与数值显示
+   */
+  function updateLevelSlidersAndLabels() {
+    if (blackLevelSlider) {
+      blackLevelSlider.value = String(blackLevel);
+    }
+    if (whiteLevelSlider) {
+      whiteLevelSlider.value = String(whiteLevel);
+    }
+    if (blackLevelValueEl) {
+      blackLevelValueEl.textContent = String(blackLevel);
+    }
+    if (whiteLevelValueEl) {
+      whiteLevelValueEl.textContent = String(whiteLevel);
+    }
+  }
+
+  /**
    * 绘制直方图
    * @param {Uint16Array} pixels16 16bit 像素数据
+   * @param {boolean} autoAdjustLevels 是否根据当前帧自动设置黑/白电平为 min/max
    */
-  function drawHistogram(pixels16) {
-    if (!histCtx || !pixels16 || pixels16.length === 0) return;
+  function drawHistogram(pixels16, autoAdjustLevels = false) {
+    if (!histCtx || !histogramCanvas || !pixels16 || pixels16.length === 0) return;
 
     // 设置 canvas 大小
     const width = histogramCanvas.clientWidth;
     const height = histogramCanvas.clientHeight;
+    if (width === 0 || height === 0) return;
     histogramCanvas.width = width;
     histogramCanvas.height = height;
 
@@ -336,7 +401,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (val < min) min = val;
       if (val > max) max = val;
       sum += val;
-      
+
       // 将 16bit 值映射到 256 个区间
       const binIndex = Math.floor((val / 65535) * (bins - 1));
       histogram[binIndex]++;
@@ -345,9 +410,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const mean = Math.round(sum / pixels16.length);
 
     // 更新统计信息
-    histMinEl.textContent = `Min: ${min}`;
-    histMaxEl.textContent = `Max: ${max}`;
-    histMeanEl.textContent = `Mean: ${mean}`;
+    if (histMinEl) histMinEl.textContent = `Min: ${min}`;
+    if (histMaxEl) histMaxEl.textContent = `Max: ${max}`;
+    if (histMeanEl) histMeanEl.textContent = `Mean: ${mean}`;
+
+    // 当需要自动设置时，将黑白电平初始化为当前帧的 min/max
+    if (autoAdjustLevels) {
+      blackLevel = min;
+      whiteLevel = max;
+      updateLevelSlidersAndLabels();
+    }
 
     // 找到最大频率用于归一化
     const maxCount = Math.max(...histogram);
@@ -371,46 +443,69 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 绘制直方图柱状图
     const barWidth = width / bins;
     histCtx.fillStyle = '#8b949e';
-    
+
     for (let i = 0; i < bins; i++) {
       const barHeight = (histogram[i] / maxCount) * (height - 4);
       const x = i * barWidth;
       const y = height - barHeight;
       histCtx.fillRect(x, y, Math.max(barWidth, 1), barHeight);
     }
+
+    // 绘制表示黑/白电平位置的两条竖线
+    const clampedBlack = Math.min(Math.max(blackLevel, 0), 65535);
+    const clampedWhite = Math.min(Math.max(whiteLevel, 0), 65535);
+
+    const xBlack = (clampedBlack / 65535) * width + 0.5; // +0.5 让 1px 线更清晰
+    const xWhite = (clampedWhite / 65535) * width + 0.5;
+
+    // 黑电平线（蓝色）
+    histCtx.strokeStyle = '#58a6ff';
+    histCtx.lineWidth = 1;
+    histCtx.beginPath();
+    histCtx.moveTo(xBlack, 0);
+    histCtx.lineTo(xBlack, height);
+    histCtx.stroke();
+
+    // 白电平线（橙色）
+    histCtx.strokeStyle = '#f0883e';
+    histCtx.beginPath();
+    histCtx.moveTo(xWhite, 0);
+    histCtx.lineTo(xWhite, height);
+    histCtx.stroke();
   }
 
   /**
-   * 将 16bit 单通道灰度数据拉伸到 8bit，并绘制到 canvas 上
-   * @param {ArrayBuffer} buffer 原始像素缓冲区（16bit little-endian）
+   * 使用当前黑/白电平，将 16bit 单通道灰度数据拉伸到 8bit，并绘制到 canvas 上
+   * @param {Uint16Array} pixels16 16bit 像素数据
    * @param {number} width
    * @param {number} height
    */
-  function renderFrame(buffer, width, height) {
-    const pixels16 = new Uint16Array(buffer);
+  function renderFrameFromPixels(pixels16, width, height) {
+    if (!pixels16) return;
     const count = width * height;
     if (pixels16.length < count) {
       console.warn('像素数据长度不足：', pixels16.length, '预期：', count);
       return;
     }
 
-    // 简单线性拉伸：根据当前帧的 min/max 映射到 0-255
-    let min = 0xffff;
-    let max = 0;
-    for (let i = 0; i < count; i += 1) {
-      const v = pixels16[i];
-      if (v < min) min = v;
-      if (v > max) max = v;
+    // 使用黑/白电平做线性拉伸到 0-255
+    let minLevel = blackLevel;
+    let maxLevel = whiteLevel;
+    if (maxLevel <= minLevel) {
+      // 避免除零，退化为全 0 图像
+      maxLevel = minLevel + 1;
     }
-    if (max === min) {
-      max = min + 1; // 避免除零
-    }
+    const range = maxLevel - minLevel;
 
-    // 将 16bit 灰度拉伸到 8bit，并转换为 RGBA 缓冲区
     const rgba = new Uint8Array(count * 4);
     for (let i = 0; i < count; i += 1) {
-      const v16 = pixels16[i];
-      const norm = (v16 - min) / (max - min);
+      let v16 = pixels16[i];
+      if (v16 <= minLevel) {
+        v16 = minLevel;
+      } else if (v16 >= maxLevel) {
+        v16 = maxLevel;
+      }
+      const norm = (v16 - minLevel) / range;
       const v8 = Math.max(0, Math.min(255, Math.round(norm * 255)));
 
       const idx = i * 4;
@@ -442,7 +537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     imageSprite = new PIXI.Sprite(texture);
     imageSprite.interactive = false;
     imageLayer.addChild(imageSprite);
-    
+
     // 应用当前插值模式与缩放
     applyInterpolationMode();
     // 应用当前缩放
@@ -455,20 +550,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     resultEl.textContent =
       `分辨率: ${width} x ${height}, bpp: ${bpp}, 通道数: ${channels}\n` +
       `字节长度: ${buffer.byteLength}\n` +
-      `显示方式: 当前帧 16bit 灰度根据最小/最大值线性拉伸到 8bit`;
+      `显示方式: 使用黑/白电平对 16bit 灰度进行线性拉伸到 8bit（可在直方图下方调整）`;
 
     console.log('接收到的像素缓冲区字节长度:', buffer.byteLength);
 
+    // 缓存最近一帧数据，供灰度拉伸滑块实时重绘使用
+    try {
+      lastPixels16 = new Uint16Array(buffer);
+      lastWidth = width;
+      lastHeight = height;
+    } catch (e) {
+      console.error('缓存像素数据失败:', e);
+      lastPixels16 = null;
+      lastWidth = 0;
+      lastHeight = 0;
+    }
+
     // 先绘制直方图（即使后续 Pixi 渲染失败，统计信息也能正常显示）
     try {
-      const pixels16 = new Uint16Array(buffer);
-      drawHistogram(pixels16);
+      if (lastPixels16) {
+        drawHistogram(lastPixels16, true);
+      }
     } catch (e) {
       console.error('绘制直方图失败:', e);
     }
 
     try {
-      renderFrame(buffer, width, height);
+      if (lastPixels16) {
+        renderFrameFromPixels(lastPixels16, width, height);
+      }
     } catch (e) {
       console.error('渲染图像失败:', e);
       resultEl.textContent += `\n渲染图像失败: ${e?.message || e}`;
@@ -479,6 +589,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     statusEl.textContent = '拍摄失败';
     resultEl.textContent = error || '未知错误';
   });
+
+  /**
+   * 在已有一帧缓存的前提下，依据当前黑/白电平重绘直方图和图像
+   */
+  function redrawFromLevels() {
+    if (!lastPixels16 || lastWidth <= 0 || lastHeight <= 0) return;
+
+    try {
+      drawHistogram(lastPixels16, false);
+    } catch (e) {
+      console.error('根据黑白电平重绘直方图失败:', e);
+    }
+
+    try {
+      renderFrameFromPixels(lastPixels16, lastWidth, lastHeight);
+    } catch (e) {
+      console.error('根据黑白电平重绘图像失败:', e);
+    }
+  }
 
   function computeExposureUs() {
     if (!expInput) return 1000000; // 默认 1s
