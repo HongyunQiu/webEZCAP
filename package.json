@@ -15,6 +15,7 @@
     "electron": "^39.2.3",
     "electron-rebuild": "^3.2.9"
   },
-  "dependencies": {}
+  "dependencies": {
+    "pixi.js": "^8.14.3"
+  }
 }
-

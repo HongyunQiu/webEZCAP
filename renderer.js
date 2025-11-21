@@ -1,10 +1,26 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const btn = document.getElementById('captureBtn');
   const statusEl = document.getElementById('status');
   const resultEl = document.getElementById('result');
   const expInput = document.getElementById('expMs');
-  const canvas = document.getElementById('previewCanvas');
-  const ctx = canvas.getContext('2d');
+  const imageContainer = document.getElementById('imageContainer');
+
+  // 离屏 canvas，用于从 16bit -> 8bit RGBA 并生成纹理
+  const offscreenCanvas = document.createElement('canvas');
+  const offscreenCtx = offscreenCanvas.getContext('2d');
+
+  // 使用 PixiJS 在预览区域进行 GPU 加速渲染（Pixi v8 需要显式 init）
+  const app = new PIXI.Application();
+  await app.init({
+    resizeTo: imageContainer,
+    backgroundColor: 0x000000,
+    antialias: false,
+  });
+  imageContainer.appendChild(app.canvas);
+
+  const imageLayer = new PIXI.Container(); // 专门用于放图像的图层，方便缩放/平移
+  app.stage.addChild(imageLayer);
+  let imageSprite = null;             // 当前显示的图像精灵
   
   // 直方图相关元素
   const histogramCanvas = document.getElementById('histogramCanvas');
@@ -14,7 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const histMeanEl = document.getElementById('histMean');
 
   // 缩放控制相关元素
-  const imageContainer = document.getElementById('imageContainer');
   const zoomInBtn = document.getElementById('zoomInBtn');
   const zoomOutBtn = document.getElementById('zoomOutBtn');
   const zoomResetBtn = document.getElementById('zoomResetBtn');
@@ -28,12 +43,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let offsetY = 0; // 画面平移 Y 偏移（像素）
 
   /**
-   * 根据当前缩放和偏移，更新 canvas 的 transform
+   * 根据当前缩放和偏移，更新 Pixi 图层的变换
    */
   function updateCanvasTransform() {
-    if (!canvas) return;
-    canvas.style.transformOrigin = 'top left';
-    canvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${currentZoom})`;
+    if (!imageLayer) return;
+    imageLayer.position.set(offsetX, offsetY);
+    imageLayer.scale.set(currentZoom);
   }
 
   /**
@@ -49,9 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
    * 应用缩放变换
    */
   function applyZoom() {
-    if (canvas.width > 0 && canvas.height > 0) {
-      updateCanvasTransform();
-    }
+    updateCanvasTransform();
     updateZoomDisplay();
   }
 
@@ -229,8 +242,6 @@ document.addEventListener('DOMContentLoaded', () => {
    * @param {number} height
    */
   function renderFrame(buffer, width, height) {
-    if (!ctx) return;
-
     const pixels16 = new Uint16Array(buffer);
     const count = width * height;
     if (pixels16.length < count) {
@@ -250,31 +261,41 @@ document.addEventListener('DOMContentLoaded', () => {
       max = min + 1; // 避免除零
     }
 
-    canvas.width = width;
-    canvas.height = height;
-
-    const imageData = ctx.createImageData(width, height);
-    const data = imageData.data; // Uint8ClampedArray, RGBA
-
+    // 将 16bit 灰度拉伸到 8bit，并转换为 RGBA 缓冲区
+    const rgba = new Uint8Array(count * 4);
     for (let i = 0; i < count; i += 1) {
       const v16 = pixels16[i];
       const norm = (v16 - min) / (max - min);
       const v8 = Math.max(0, Math.min(255, Math.round(norm * 255)));
 
       const idx = i * 4;
-      data[idx] = v8; // R
-      data[idx + 1] = v8; // G
-      data[idx + 2] = v8; // B
-      data[idx + 3] = 255; // A
+      rgba[idx] = v8;       // R
+      rgba[idx + 1] = v8;   // G
+      rgba[idx + 2] = v8;   // B
+      rgba[idx + 3] = 255;  // A
     }
 
-    ctx.putImageData(imageData, 0, 0);
+    // 将 RGBA 数据绘制到离屏 canvas，再交给 Pixi 生成纹理
+    offscreenCanvas.width = width;
+    offscreenCanvas.height = height;
+    const clamped = new Uint8ClampedArray(rgba);
+    const imageData = new ImageData(clamped, width, height);
+    offscreenCtx.putImageData(imageData, 0, 0);
+
+    const texture = PIXI.Texture.from(offscreenCanvas);
+
+    if (imageSprite) {
+      // 释放上一帧的纹理资源
+      imageSprite.texture.destroy(true);
+      imageLayer.removeChild(imageSprite);
+    }
+
+    imageSprite = new PIXI.Sprite(texture);
+    imageSprite.interactive = false;
+    imageLayer.addChild(imageSprite);
     
     // 应用当前缩放
     applyZoom();
-    
-    // 绘制直方图
-    drawHistogram(pixels16);
   }
 
   // 监听从主进程返回的帧数据（ArrayBuffer）
@@ -287,10 +308,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     console.log('接收到的像素缓冲区字节长度:', buffer.byteLength);
 
+    // 先绘制直方图（即使后续 Pixi 渲染失败，统计信息也能正常显示）
+    try {
+      const pixels16 = new Uint16Array(buffer);
+      drawHistogram(pixels16);
+    } catch (e) {
+      console.error('绘制直方图失败:', e);
+    }
+
     try {
       renderFrame(buffer, width, height);
     } catch (e) {
       console.error('渲染图像失败:', e);
+      resultEl.textContent += `\n渲染图像失败: ${e?.message || e}`;
     }
   });
 

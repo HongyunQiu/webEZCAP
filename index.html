@@ -280,22 +280,13 @@
       .image-container {
         flex: 1;
         overflow: hidden;            /* 使用平移而不是原生滚动条 */
-        position: relative;          /* 作为 canvas 绝对定位的参考 */
+        position: relative;
         background: var(--bg-dark);
         cursor: grab;                /* 支持拖拽浏览时的光标样式 */
       }
 
       .image-container.panning {
         cursor: grabbing;
-      }
-
-      #previewCanvas {
-        display: block;
-        box-shadow: 0 0 50px rgba(0,0,0,0.5);
-        image-rendering: pixelated;  /* 保持像素清晰 */
-        position: absolute;          /* 通过 transform 来做平移/缩放 */
-        left: 0;
-        top: 0;
       }
 
       /* 直方图样式 */
@@ -411,9 +402,7 @@
             <button class="zoom-btn" id="zoomResetBtn" title="1:1显示">1:1</button>
           </div>
         </div>
-        <div class="image-container" id="imageContainer">
-          <canvas id="previewCanvas"></canvas>
-        </div>
+        <div class="image-container" id="imageContainer"></div>
       </main>
     </div>
 
@@ -436,6 +425,8 @@
         });
       });
     </script>
+    <!-- PixiJS：用于 GPU 加速图像显示 -->
+    <script src="./node_modules/pixi.js/dist/pixi.min.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>
