@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>QHYCCD 单帧拍摄示例</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei',
+          sans-serif;
+        background: #0f172a;
+        color: #e5e7eb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+
+      .card {
+        background: #020617;
+        border-radius: 16px;
+        padding: 24px 28px;
+        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        width: 520px;
+      }
+
+      h1 {
+        margin-top: 0;
+        margin-bottom: 4px;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .subtitle {
+        margin: 0 0 20px;
+        font-size: 13px;
+        color: #9ca3af;
+      }
+
+      label {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 6px;
+        color: #e5e7eb;
+      }
+
+      input {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid #4b5563;
+        background: #020617;
+        color: #e5e7eb;
+        outline: none;
+        font-size: 13px;
+      }
+
+      input:focus {
+        border-color: #38bdf8;
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4);
+      }
+
+      button {
+        margin-top: 16px;
+        width: 100%;
+        padding: 9px 0;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        color: white;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.08s ease, box-shadow 0.08s ease,
+          filter 0.08s ease;
+        box-shadow: 0 12px 30px rgba(34, 197, 94, 0.45);
+      }
+
+      button:hover {
+        filter: brightness(1.05);
+        box-shadow: 0 12px 35px rgba(34, 197, 94, 0.6);
+        transform: translateY(-1px);
+      }
+
+      button:active {
+        transform: translateY(0);
+        box-shadow: 0 8px 20px rgba(34, 197, 94, 0.4);
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+
+      .status {
+        margin-top: 14px;
+        font-size: 13px;
+        color: #e5e7eb;
+        min-height: 18px;
+      }
+
+      .result {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #9ca3af;
+        white-space: pre-wrap;
+        word-break: break-all;
+        border-radius: 8px;
+        background: rgba(15, 23, 42, 0.85);
+        padding: 10px;
+        border: 1px dashed rgba(148, 163, 184, 0.45);
+      }
+
+      .preview-wrapper {
+        margin-top: 14px;
+        border-radius: 10px;
+        background: radial-gradient(circle at top left, #0f172a, #020617);
+        padding: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+      }
+
+      .preview-title {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-bottom: 6px;
+      }
+
+      #previewCanvas {
+        width: 100%;
+        border-radius: 6px;
+        background: black;
+        image-rendering: pixelated;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>QHYCCD 单帧拍摄</h1>
+      <p class="subtitle">点击按钮调用 QHYCCD SDK 完成一次单帧曝光，并保存 RAW 文件。</p>
+
+      <div>
+        <label for="expMs">曝光时间（毫秒）</label>
+        <input id="expMs" type="number" value="1000" min="1" />
+      </div>
+
+      <button id="captureBtn">拍一张</button>
+
+      <div id="status" class="status"></div>
+      <div id="result" class="result"></div>
+
+      <div class="preview-wrapper">
+        <div class="preview-title">预览（16bit 灰度拉伸到 8bit）</div>
+        <canvas id="previewCanvas"></canvas>
+      </div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+  </html>
+
+
