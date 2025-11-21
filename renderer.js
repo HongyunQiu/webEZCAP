@@ -13,6 +13,146 @@ document.addEventListener('DOMContentLoaded', () => {
   const histMaxEl = document.getElementById('histMax');
   const histMeanEl = document.getElementById('histMean');
 
+  // 缩放控制相关元素
+  const imageContainer = document.getElementById('imageContainer');
+  const zoomInBtn = document.getElementById('zoomInBtn');
+  const zoomOutBtn = document.getElementById('zoomOutBtn');
+  const zoomResetBtn = document.getElementById('zoomResetBtn');
+  const zoomLevelEl = document.getElementById('zoomLevel');
+
+  // 缩放相关状态
+  let currentZoom = 1.0;
+  const zoomLevels = [0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0];
+  let currentZoomIndex = zoomLevels.indexOf(1.0);
+  let offsetX = 0; // 画面平移 X 偏移（像素）
+  let offsetY = 0; // 画面平移 Y 偏移（像素）
+
+  /**
+   * 根据当前缩放和偏移，更新 canvas 的 transform
+   */
+  function updateCanvasTransform() {
+    if (!canvas) return;
+    canvas.style.transformOrigin = 'top left';
+    canvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${currentZoom})`;
+  }
+
+  /**
+   * 更新缩放比例显示和按钮状态
+   */
+  function updateZoomDisplay() {
+    zoomLevelEl.textContent = `${Math.round(currentZoom * 100)}%`;
+    zoomOutBtn.disabled = currentZoomIndex <= 0;
+    zoomInBtn.disabled = currentZoomIndex >= zoomLevels.length - 1;
+  }
+
+  /**
+   * 应用缩放变换
+   */
+  function applyZoom() {
+    if (canvas.width > 0 && canvas.height > 0) {
+      updateCanvasTransform();
+    }
+    updateZoomDisplay();
+  }
+
+  /**
+   * 放大
+   */
+  function zoomIn() {
+    if (currentZoomIndex < zoomLevels.length - 1) {
+      currentZoomIndex++;
+      currentZoom = zoomLevels[currentZoomIndex];
+      applyZoom();
+    }
+  }
+
+  /**
+   * 缩小
+   */
+  function zoomOut() {
+    if (currentZoomIndex > 0) {
+      currentZoomIndex--;
+      currentZoom = zoomLevels[currentZoomIndex];
+      applyZoom();
+    }
+  }
+
+  /**
+   * 重置为1:1显示
+   */
+  function zoomReset() {
+    currentZoomIndex = zoomLevels.indexOf(1.0);
+    currentZoom = 1.0;
+    applyZoom();
+  }
+
+  // 绑定缩放按钮事件
+  zoomInBtn.addEventListener('click', zoomIn);
+  zoomOutBtn.addEventListener('click', zoomOut);
+  zoomResetBtn.addEventListener('click', zoomReset);
+
+  // 鼠标滚轮缩放（可选）
+  imageContainer.addEventListener('wheel', (e) => {
+    if (e.ctrlKey) {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        zoomIn();
+      } else {
+        zoomOut();
+      }
+    }
+  }, { passive: false });
+
+  // 初始化
+  updateZoomDisplay();
+
+  /**
+   * 图像拖拽平移（左键按下拖动，改变偏移量）
+   */
+  let isPanning = false;
+  let startX = 0;
+  let startY = 0;
+  let startOffsetX = 0;
+  let startOffsetY = 0;
+
+  imageContainer.addEventListener('mousedown', (e) => {
+    // 仅响应鼠标左键
+    if (e.button !== 0) return;
+
+    isPanning = true;
+    imageContainer.classList.add('panning');
+
+    startX = e.clientX;
+    startY = e.clientY;
+    startOffsetX = offsetX;
+    startOffsetY = offsetY;
+
+    // 避免选中文本等默认行为
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isPanning) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    offsetX = startOffsetX + dx;
+    offsetY = startOffsetY + dy;
+    updateCanvasTransform();
+
+    e.preventDefault();
+  });
+
+  const stopPanning = () => {
+    if (!isPanning) return;
+    isPanning = false;
+    imageContainer.classList.remove('panning');
+  };
+
+  document.addEventListener('mouseup', stopPanning);
+  document.addEventListener('mouseleave', stopPanning);
+
   /**
    * 绘制直方图
    * @param {Uint16Array} pixels16 16bit 像素数据
@@ -129,6 +269,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     ctx.putImageData(imageData, 0, 0);
+    
+    // 应用当前缩放
+    applyZoom();
     
     // 绘制直方图
     drawHistogram(pixels16);

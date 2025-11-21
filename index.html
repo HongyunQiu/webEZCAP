@@ -222,25 +222,80 @@
         border-bottom: 1px solid var(--border-color);
         display: flex;
         align-items: center;
+        justify-content: space-between;
         padding: 0 20px;
         font-size: 12px;
         color: var(--text-secondary);
       }
 
-      .image-container {
-        flex: 1;
+      .zoom-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .zoom-btn {
+        width: 32px;
+        height: 32px;
+        padding: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 40px;
-        overflow: hidden;
+        background: var(--input-bg);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 14px;
+        font-weight: normal;
+      }
+
+      .zoom-btn:hover {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+        color: white;
+      }
+
+      .zoom-btn:active {
+        transform: translateY(1px);
+      }
+
+      .zoom-btn:disabled {
+        background: var(--input-bg);
+        border-color: var(--border-color);
+        color: var(--text-secondary);
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .zoom-level {
+        min-width: 60px;
+        text-align: center;
+        font-size: 12px;
+        color: var(--text-primary);
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      }
+
+      .image-container {
+        flex: 1;
+        overflow: hidden;            /* 使用平移而不是原生滚动条 */
+        position: relative;          /* 作为 canvas 绝对定位的参考 */
+        background: var(--bg-dark);
+        cursor: grab;                /* 支持拖拽浏览时的光标样式 */
+      }
+
+      .image-container.panning {
+        cursor: grabbing;
       }
 
       #previewCanvas {
-        max-width: 100%;
-        max-height: 100%;
+        display: block;
         box-shadow: 0 0 50px rgba(0,0,0,0.5);
-        image-rendering: pixelated; /* 保持像素清晰 */
+        image-rendering: pixelated;  /* 保持像素清晰 */
+        position: absolute;          /* 通过 transform 来做平移/缩放 */
+        left: 0;
+        top: 0;
       }
 
       /* 直方图样式 */
@@ -349,8 +404,14 @@
       <main class="main-view">
         <div class="toolbar-top">
           <span>Image Preview (16bit -> 8bit)</span>
+          <div class="zoom-controls">
+            <button class="zoom-btn" id="zoomOutBtn" title="缩小">−</button>
+            <span class="zoom-level" id="zoomLevel">100%</span>
+            <button class="zoom-btn" id="zoomInBtn" title="放大">+</button>
+            <button class="zoom-btn" id="zoomResetBtn" title="1:1显示">1:1</button>
+          </div>
         </div>
-        <div class="image-container">
+        <div class="image-container" id="imageContainer">
           <canvas id="previewCanvas"></canvas>
         </div>
       </main>
