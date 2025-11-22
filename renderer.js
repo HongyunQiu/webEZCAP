@@ -131,8 +131,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   imageContainer.appendChild(app.canvas);
 
-  const imageLayer = new PIXI.Container(); // 专门用于放图像的图层，方便缩放/平移
+  // 专门用于放图像的图层，方便缩放/平移
+  const imageLayer = new PIXI.Container();
   app.stage.addChild(imageLayer);
+
+  // 测量前景图层，所有测量图元都挂在这里，跟随图像同缩放/平移
+  const measurementLayer = new PIXI.Container();
+  imageLayer.addChild(measurementLayer);
+  measurementLayer.sortableChildren = true;
+  measurementLayer.visible = true;
+
   let imageSprite = null;             // 当前显示的图像精灵
   
   // 直方图相关元素
@@ -261,6 +269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+
   // 鼠标滚轮缩放（可选）
   imageContainer.addEventListener('wheel', (e) => {
     if (e.ctrlKey) {
@@ -273,10 +282,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }, { passive: false });
 
+  // 初始化测量管理器
+  const measurementManager = new MeasurementManager({
+    imageContainer,
+    measurementLayer,
+    app,
+    getImageCoordsFromEvent: (e) => {
+      if (!imageContainer) return null;
+      const rect = imageContainer.getBoundingClientRect();
+      const xInContainer = e.clientX - rect.left;
+      const yInContainer = e.clientY - rect.top;
+      const x = (xInContainer - offsetX) / currentZoom;
+      const y = (yInContainer - offsetY) / currentZoom;
+      return { x, y };
+    },
+    getCurrentZoom: () => currentZoom,
+    imageSprite: null, // 将在 imageSprite 更新时同步
+  });
+
   // 初始化
   updateZoomDisplay();
   // 初始化黑白电平数值显示（使用默认 0 / 65535）
   updateLevelSlidersAndLabels();
+
+
+  // 测量相关函数已移至 measurement.js
 
   /**
    * 图像拖拽平移（左键按下拖动，改变偏移量）
@@ -291,6 +321,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 仅响应鼠标左键
     if (e.button !== 0) return;
 
+    // 如果当前处于测量模式，则优先交给测量逻辑处理
+    if (measurementManager.currentMeasureMode !== measurementManager.MEASURE_MODES.NONE) {
+      measurementManager.handleMouseDown(e);
+      e.preventDefault();
+      return;
+    }
+
     isPanning = true;
     imageContainer.classList.add('panning');
 
@@ -304,6 +341,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.addEventListener('mousemove', (e) => {
+    // 先处理测量预览 / 编辑（任意测量模式下都尝试处理）
+    if (measurementManager.currentMeasureMode !== measurementManager.MEASURE_MODES.NONE) {
+      measurementManager.handleMouseMove(e);
+      e.preventDefault();
+      return;
+    }
+
     if (!isPanning) return;
 
     const dx = e.clientX - startX;
@@ -317,13 +361,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   const stopPanning = () => {
-    if (!isPanning) return;
-    isPanning = false;
-    imageContainer.classList.remove('panning');
+    if (isPanning) {
+      isPanning = false;
+      imageContainer.classList.remove('panning');
+    }
+    // 无论是否在平移，都结束一次测量拖动 / 控制点拖拽
+    measurementManager.handleMouseUp();
   };
 
   document.addEventListener('mouseup', stopPanning);
   document.addEventListener('mouseleave', stopPanning);
+
+  // 双击结束折线 / 多边形绘制
+  imageContainer.addEventListener('dblclick', (e) => {
+    measurementManager.handleDoubleClick(e);
+  });
+
+  // 右键结束折线 / 多边形绘制或结束选择拖拽（无需双击）
+  imageContainer.addEventListener('contextmenu', (e) => {
+    measurementManager.handleContextMenu(e);
+  });
+
+  // 全局快捷键：Ctrl+Z / Ctrl+Y 用于撤销 / 重做测量操作（已在 measurementManager 中处理）
 
   /**
    * 绑定黑白电平滑块事件
@@ -536,7 +595,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     imageSprite = new PIXI.Sprite(texture);
     imageSprite.interactive = false;
-    imageLayer.addChild(imageSprite);
+    // 始终将图像精灵放在 imageLayer 最底层，确保 measurementLayer 及其图元渲染在其上方
+    imageLayer.addChildAt(imageSprite, 0);
+
+    // 同步更新 measurementManager 的 imageSprite 引用
+    if (measurementManager) {
+      measurementManager.updateImageSprite(imageSprite);
+    }
 
     // 应用当前插值模式与缩放
     applyInterpolationMode();
